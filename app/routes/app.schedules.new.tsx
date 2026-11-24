@@ -65,12 +65,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }),
   ]);
 
-  const pricingUrl = buildManagedPricingUrl(session.shop, planInfo.appHandle);
+  const appHandle = process.env.SHOPIFY_APP_HANDLE?.trim() || "cadenceb2b";
+  const storeHandle = session.shop.replace(/\.myshopify\.com$/i, "");
+  const pricingUrl = buildManagedPricingUrl(session.shop, appHandle);
   const canSetActive =
     planInfo.maxActiveSchedules === null ||
     activeSchedulesCount < planInfo.maxActiveSchedules;
 
   return {
+    appHandle,
+    storeHandle,
     companies: companiesResult.companies,
     companiesLoadError: companiesResult.error,
     defaultNextRunDate: getTomorrowDateInput(),
@@ -78,6 +82,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       planName: planInfo.planName,
       activeSchedulesCount,
       maxActiveSchedules: planInfo.maxActiveSchedules,
+      appHandle,
+      storeHandle,
       pricingUrl,
       canSetActive,
     },

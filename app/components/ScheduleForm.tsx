@@ -38,6 +38,8 @@ export interface PlanLimitContext {
   planName: string;
   activeSchedulesCount: number;
   maxActiveSchedules: number | null;
+  appHandle: string;
+  storeHandle: string;
   pricingUrl: string;
   canSetActive: boolean;
 }
@@ -368,6 +370,7 @@ export function ScheduleForm({
 
   const showPlanLimitBanner =
     !planContext.canSetActive && planContext.maxActiveSchedules !== null;
+  const pricingHref = `shopify://admin/charges/${planContext.appHandle}/pricing_plans`;
 
   return (
     <s-stack direction="block" gap="base">
@@ -392,7 +395,7 @@ export function ScheduleForm({
           <s-button
             slot="secondary-actions"
             variant="secondary"
-            href={planContext.pricingUrl}
+            href={pricingHref}
             target="_top"
           >
             Upgrade plan
@@ -407,7 +410,7 @@ export function ScheduleForm({
             <s-button
               slot="secondary-actions"
               variant="secondary"
-              href={planContext.pricingUrl}
+              href={pricingHref}
               target="_top"
             >
               View pricing plans

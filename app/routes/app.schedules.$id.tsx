@@ -97,17 +97,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Schedule not found", { status: 404 });
   }
 
-  const pricingUrl = buildManagedPricingUrl(session.shop, planInfo.appHandle);
+  const appHandle = process.env.SHOPIFY_APP_HANDLE?.trim() || "cadenceb2b";
+  const storeHandle = session.shop.replace(/\.myshopify\.com$/i, "");
+  const pricingUrl = buildManagedPricingUrl(session.shop, appHandle);
   const isAlreadyActive = schedule.status === ScheduleStatus.ACTIVE;
   const canSetActive =
     isAlreadyActive ||
     planInfo.maxActiveSchedules === null ||
     activeSchedulesCount < planInfo.maxActiveSchedules;
 
-  const shopHandle = session.shop.replace(/\.myshopify\.com$/i, "");
-
   return {
-    shopHandle,
+    appHandle,
+    storeHandle,
     schedule: {
       id: schedule.id,
       name: schedule.name,
@@ -146,6 +147,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       planName: planInfo.planName,
       activeSchedulesCount,
       maxActiveSchedules: planInfo.maxActiveSchedules,
+      appHandle,
+      storeHandle,
       pricingUrl,
       canSetActive,
     },
@@ -429,7 +432,7 @@ function getLogBadgeProps(status: ExecutionStatus): {
 
 export default function EditSchedulePage() {
   const {
-    shopHandle,
+    storeHandle,
     schedule,
     logs,
     companies,
@@ -601,7 +604,7 @@ export default function EditSchedulePage() {
                       <s-table-cell>
                         {draftNumericId ? (
                           <s-link
-                            href={`https://admin.shopify.com/store/${shopHandle}/draft_orders/${draftNumericId}`}
+                            href={`https://admin.shopify.com/store/${storeHandle}/draft_orders/${draftNumericId}`}
                             target="_blank"
                           >
                             #{draftNumericId}
@@ -613,7 +616,7 @@ export default function EditSchedulePage() {
                       <s-table-cell>
                         {orderNumericId ? (
                           <s-link
-                            href={`https://admin.shopify.com/store/${shopHandle}/orders/${orderNumericId}`}
+                            href={`https://admin.shopify.com/store/${storeHandle}/orders/${orderNumericId}`}
                             target="_blank"
                           >
                             #{orderNumericId}

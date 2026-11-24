@@ -63,11 +63,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     (s) => s.status === ScheduleStatus.OVERDUE_HOLD,
   ).length;
 
-  const pricingUrl = buildManagedPricingUrl(session.shop, planInfo.appHandle);
-  const shopHandle = session.shop.replace(/\.myshopify\.com$/i, "");
-  const companiesAdminUrl = `https://admin.shopify.com/store/${shopHandle}/companies`;
+  const appHandle = process.env.SHOPIFY_APP_HANDLE?.trim() || "cadenceb2b";
+  const storeHandle = session.shop.replace(/\.myshopify\.com$/i, "");
+  const pricingUrl = buildManagedPricingUrl(session.shop, appHandle);
+  const companiesAdminUrl = `https://admin.shopify.com/store/${storeHandle}/companies`;
 
   return {
+    appHandle,
+    storeHandle,
     schedules: schedules.map((s) => ({
       id: s.id,
       name: s.name,
@@ -89,6 +92,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       tier: planInfo.tier,
       planName: planInfo.planName,
       maxActiveSchedules: planInfo.maxActiveSchedules,
+      appHandle,
+      storeHandle,
       pricingUrl,
     },
     hasB2BCompanies: b2bStatus.hasCompanies,
@@ -102,6 +107,8 @@ interface ActionResponse {
   intent: string;
   message: string;
   tone: "success" | "warning" | "critical";
+  appHandle?: string;
+  storeHandle?: string;
   pricingUrl?: string;
 }
 
@@ -172,15 +179,17 @@ export const action = async ({
         planInfo.maxActiveSchedules !== null &&
         currentActiveCount >= planInfo.maxActiveSchedules
       ) {
-        const pricingUrl = buildManagedPricingUrl(
-          session.shop,
-          planInfo.appHandle,
-        );
+        const appHandle =
+          process.env.SHOPIFY_APP_HANDLE?.trim() || "cadenceb2b";
+        const storeHandle = session.shop.replace(/\.myshopify\.com$/i, "");
+        const pricingUrl = buildManagedPricingUrl(session.shop, appHandle);
         return {
           ok: false,
           intent,
           message: `Your ${planInfo.planName} plan allows up to ${planInfo.maxActiveSchedules} active recurring ${planInfo.maxActiveSchedules === 1 ? "schedule" : "schedules"}. Upgrade your plan or pause another schedule first.`,
           tone: "warning",
+          appHandle,
+          storeHandle,
           pricingUrl,
         };
       }
@@ -287,6 +296,7 @@ function getStatusBadgeProps(status: ScheduleStatus): {
 
 export default function DashboardPage() {
   const {
+    appHandle,
     schedules,
     kpis,
     plan,
@@ -371,7 +381,7 @@ export default function DashboardPage() {
             <s-button
               slot="secondary-actions"
               variant="secondary"
-              href={plan.pricingUrl}
+              href={`shopify://admin/charges/${appHandle}/pricing_plans`}
               target="_top"
             >
               View pricing plans
@@ -393,7 +403,7 @@ export default function DashboardPage() {
               <s-button
                 slot="secondary-actions"
                 variant="secondary"
-                href={fetcher.data.pricingUrl}
+                href={`shopify://admin/charges/${fetcher.data.appHandle || appHandle}/pricing_plans`}
                 target="_top"
               >
                 Upgrade plan
