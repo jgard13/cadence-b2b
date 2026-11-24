@@ -84,13 +84,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
               ? err.message
               : "Could not load B2B Companies from Shopify.",
         })),
-      getActivePlan(admin).catch(() => ({
-        tier: "FREE" as const,
-        planName: "Free",
-        maxActiveSchedules: 1,
-        appHandle: process.env.SHOPIFY_APP_HANDLE || "cadenceb2b",
-        activeSubscriptions: [],
-      })),
+      getActivePlan(admin, { requestUrl: request.url }),
       prisma.recurringSchedule.count({
         where: {
           shop: session.shop,
@@ -324,21 +318,28 @@ export const action = async ({
     targetStatus === ScheduleStatus.ACTIVE &&
     existing.status !== ScheduleStatus.ACTIVE
   ) {
-    const [planInfo, activeCount] = await Promise.all([
-      getActivePlan(admin).catch(() => ({
-        tier: "FREE" as const,
-        planName: "Free",
-        maxActiveSchedules: 1,
-        appHandle: process.env.SHOPIFY_APP_HANDLE || "cadenceb2b",
-        activeSubscriptions: [],
-      })),
-      prisma.recurringSchedule.count({
-        where: {
-          shop: session.shop,
-          status: ScheduleStatus.ACTIVE,
+    let planInfo: Awaited<ReturnType<typeof getActivePlan>>;
+    let activeCount: number;
+    try {
+      [planInfo, activeCount] = await Promise.all([
+        getActivePlan(admin, { requestUrl: request.url }),
+        prisma.recurringSchedule.count({
+          where: {
+            shop: session.shop,
+            status: ScheduleStatus.ACTIVE,
+          },
+        }),
+      ]);
+    } catch (error) {
+      console.error("[Billing] Failed to verify active subscription:", error);
+      return {
+        ok: false,
+        intent: "update",
+        errors: {
+          form: "Unable to verify your subscription plan with Shopify right now. Please try again in a moment.",
         },
-      }),
-    ]);
+      };
+    }
 
     if (
       planInfo.maxActiveSchedules !== null &&

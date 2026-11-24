@@ -1,4 +1,10 @@
 import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
+import {
+  fetchActiveSubscription,
+  hasPlanHandleParam,
+  type PartnerActiveSubscription,
+  type PartnerSubscriptionItem,
+} from "./partnerApi.server";
 
 export type AdminClient = Pick<AdminApiContext, "graphql">;
 
@@ -70,7 +76,15 @@ export interface ActivePlanInfo {
   planName: string;
   maxActiveSchedules: number | null;
   appHandle: string;
-  activeSubscriptions: Array<{ name: string; status: string }>;
+  billingPeriod: string | null;
+  cancelAtEndOfCycle: boolean;
+  trialEndsAt: string | null;
+  items: PartnerSubscriptionItem[];
+}
+
+export interface GetActivePlanOptions {
+  bypassCache?: boolean;
+  requestUrl?: Request | URL | string | null;
 }
 
 interface GraphQLErrorItem {
@@ -100,11 +114,14 @@ export function formatUserErrors(userErrors: GraphQLUserError[]): string {
 
 export function buildManagedPricingUrl(
   shopDomain: string,
-  appHandle: string,
+  appHandle?: string,
 ): string {
-  const shopHandle = shopDomain.replace(/\.myshopify\.com$/i, "");
-  const safeAppHandle = appHandle.trim() || DEFAULT_APP_HANDLE;
-  return `https://admin.shopify.com/store/${shopHandle}/charges/${safeAppHandle}/pricing_plans`;
+  const storeHandle = shopDomain.replace(/\.myshopify\.com$/i, "");
+  const safeAppHandle =
+    appHandle?.trim() ||
+    process.env.SHOPIFY_APP_HANDLE?.trim() ||
+    DEFAULT_APP_HANDLE;
+  return `https://admin.shopify.com/store/${storeHandle}/charges/${safeAppHandle}/pricing_plans`;
 }
 
 async function parseGraphQLResponse<TData>(
@@ -516,69 +533,68 @@ export async function completeDraftOrderNetTerms(
   };
 }
 
-const GET_ACTIVE_PLAN_QUERY = `#graphql
-  query GetCurrentAppPlan {
-    currentAppInstallation {
-      app {
-        handle
-      }
-      activeSubscriptions {
-        name
-        status
-      }
+const GET_SHOP_ID_QUERY = `#graphql
+  query GetShopId {
+    shop {
+      id
     }
   }
 `;
 
-interface GetActivePlanData {
-  currentAppInstallation: {
-    app: {
-      handle: string | null;
-    } | null;
-    activeSubscriptions: Array<{
-      name: string;
-      status: string;
-    }>;
-  } | null;
+interface GetShopIdData {
+  shop: {
+    id: string;
+  };
 }
 
-export async function getActivePlan(
-  admin: AdminClient,
-): Promise<ActivePlanInfo> {
-  const response = await admin.graphql(GET_ACTIVE_PLAN_QUERY);
-  const data = await parseGraphQLResponse<GetActivePlanData>(response);
+export async function getShopId(admin: AdminClient): Promise<string> {
+  const response = await admin.graphql(GET_SHOP_ID_QUERY);
+  const data = await parseGraphQLResponse<GetShopIdData>(response);
+  if (!data.shop?.id) {
+    throw new Error("Shopify Admin API did not return a shop ID.");
+  }
+  return data.shop.id;
+}
 
-  const installation = data.currentAppInstallation;
-  const appHandle =
-    installation?.app?.handle ||
-    process.env.SHOPIFY_APP_HANDLE ||
-    DEFAULT_APP_HANDLE;
-
-  const activeSubscriptions = (installation?.activeSubscriptions ?? []).filter(
-    (sub) => sub.status.toUpperCase() === "ACTIVE",
+function mapSubscriptionToPlan(
+  subscription: PartnerActiveSubscription | null,
+  appHandle: string,
+): ActivePlanInfo {
+  const items = subscription?.items ?? [];
+  const normalizedHandles = items.map((item) =>
+    item.handle.trim().toLowerCase(),
   );
+  const sharedMeta = {
+    appHandle,
+    billingPeriod: subscription?.billingPeriod ?? null,
+    cancelAtEndOfCycle: subscription?.cancelAtEndOfCycle ?? false,
+    trialEndsAt: subscription?.trialEndsAt ?? null,
+    items,
+  };
 
-  if (activeSubscriptions.some((sub) => /scale/i.test(sub.name))) {
+  if (
+    normalizedHandles.some(
+      (handle) => handle === "scale" || handle.includes("scale"),
+    )
+  ) {
     return {
       tier: "SCALE",
-      planName:
-        activeSubscriptions.find((sub) => /scale/i.test(sub.name))?.name ??
-        "Scale",
+      planName: "Scale",
       maxActiveSchedules: null,
-      appHandle,
-      activeSubscriptions,
+      ...sharedMeta,
     };
   }
 
-  if (activeSubscriptions.some((sub) => /growth/i.test(sub.name))) {
+  if (
+    normalizedHandles.some(
+      (handle) => handle === "growth" || handle.includes("growth"),
+    )
+  ) {
     return {
       tier: "GROWTH",
-      planName:
-        activeSubscriptions.find((sub) => /growth/i.test(sub.name))?.name ??
-        "Growth",
+      planName: "Growth",
       maxActiveSchedules: 30,
-      appHandle,
-      activeSubscriptions,
+      ...sharedMeta,
     };
   }
 
@@ -586,7 +602,20 @@ export async function getActivePlan(
     tier: "FREE",
     planName: "Free",
     maxActiveSchedules: 1,
-    appHandle,
-    activeSubscriptions,
+    ...sharedMeta,
   };
+}
+
+export async function getActivePlan(
+  admin: AdminClient,
+  options?: GetActivePlanOptions,
+): Promise<ActivePlanInfo> {
+  const appHandle =
+    process.env.SHOPIFY_APP_HANDLE?.trim() || DEFAULT_APP_HANDLE;
+  const shopId = await getShopId(admin);
+  const bypassCache =
+    Boolean(options?.bypassCache) || hasPlanHandleParam(options?.requestUrl);
+  const subscription = await fetchActiveSubscription(shopId, { bypassCache });
+
+  return mapSubscriptionToPlan(subscription, appHandle);
 }

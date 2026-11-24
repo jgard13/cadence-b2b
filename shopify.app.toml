@@ -2,7 +2,7 @@
 
 client_id = "66f2e787b664ba2822edf5357b14f301"
 name = "CadenceB2B"
-application_url = "https://example.com"
+application_url = "https://shopify.cadenceb2b.app"
 embedded = true
 
 [access_scopes]
@@ -72,8 +72,7 @@ api_version = "2026-10"
   query_filter = "product.status:'ACTIVE'"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://shopify.cadenceb2b.app/api/auth" ]
 
 [build]
-include_config_on_deploy = true
 automatically_update_urls_on_dev = true

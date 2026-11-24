@@ -393,7 +393,7 @@ export function ScheduleForm({
             slot="secondary-actions"
             variant="secondary"
             href={planContext.pricingUrl}
-            target="_blank"
+            target="_top"
           >
             Upgrade plan
           </s-button>
@@ -408,7 +408,7 @@ export function ScheduleForm({
               slot="secondary-actions"
               variant="secondary"
               href={planContext.pricingUrl}
-              target="_blank"
+              target="_top"
             >
               View pricing plans
             </s-button>

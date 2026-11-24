@@ -44,13 +44,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           executedAt: { gte: thirtyDaysAgo },
         },
       }),
-      getActivePlan(admin).catch(() => ({
-        tier: "FREE" as const,
-        planName: "Free",
-        maxActiveSchedules: 1,
-        appHandle: process.env.SHOPIFY_APP_HANDLE || "cadenceb2b",
-        activeSubscriptions: [],
-      })),
+      getActivePlan(admin, { requestUrl: request.url }),
       hasAnyB2BCompanies(admin)
         .then((hasCompanies) => ({ hasCompanies, error: null as string | null }))
         .catch((err: unknown) => ({
@@ -151,21 +145,28 @@ export const action = async ({
         : ScheduleStatus.ACTIVE;
 
     if (targetStatus === ScheduleStatus.ACTIVE) {
-      const [planInfo, currentActiveCount] = await Promise.all([
-        getActivePlan(admin).catch(() => ({
-          tier: "FREE" as const,
-          planName: "Free",
-          maxActiveSchedules: 1,
-          appHandle: process.env.SHOPIFY_APP_HANDLE || "cadenceb2b",
-          activeSubscriptions: [],
-        })),
-        prisma.recurringSchedule.count({
-          where: {
-            shop: session.shop,
-            status: ScheduleStatus.ACTIVE,
-          },
-        }),
-      ]);
+      let planInfo: Awaited<ReturnType<typeof getActivePlan>>;
+      let currentActiveCount: number;
+      try {
+        [planInfo, currentActiveCount] = await Promise.all([
+          getActivePlan(admin, { requestUrl: request.url }),
+          prisma.recurringSchedule.count({
+            where: {
+              shop: session.shop,
+              status: ScheduleStatus.ACTIVE,
+            },
+          }),
+        ]);
+      } catch (error) {
+        console.error("[Billing] Failed to verify active subscription:", error);
+        return {
+          ok: false,
+          intent,
+          message:
+            "Unable to verify your subscription plan with Shopify right now. Please try again in a moment.",
+          tone: "critical",
+        };
+      }
 
       if (
         planInfo.maxActiveSchedules !== null &&
@@ -371,7 +372,7 @@ export default function DashboardPage() {
               slot="secondary-actions"
               variant="secondary"
               href={plan.pricingUrl}
-              target="_blank"
+              target="_top"
             >
               View pricing plans
             </s-button>
@@ -393,7 +394,7 @@ export default function DashboardPage() {
                 slot="secondary-actions"
                 variant="secondary"
                 href={fetcher.data.pricingUrl}
-                target="_blank"
+                target="_top"
               >
                 Upgrade plan
               </s-button>
